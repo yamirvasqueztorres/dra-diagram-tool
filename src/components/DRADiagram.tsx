@@ -1,4 +1,6 @@
-import { RELATIONS, REASONS, type Cell, type Item, type Relation, cellKey } from "@/lib/dra";
+import { DEFAULT_RELATIONS, DEFAULT_REASONS, RELATIONS, REASONS, type Cell, type Item, cellKey } from "@/lib/dra";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 
 interface Props {
   items: Item[];
@@ -6,9 +8,10 @@ interface Props {
   cellSize?: number; // diamond width
   onCellClick?: (i: number, j: number) => void;
   selectedKey?: string | null;
+  showReasonNumbers?: boolean; // Mostrar números de motivo debajo del símbolo
 }
 
-export function DRADiagram({ items, cells, cellSize = 64, onCellClick, selectedKey }: Props) {
+export function DRADiagram({ items, cells, cellSize = 64, onCellClick, selectedKey, showReasonNumbers = true }: Props) {
   const W = cellSize;
   const H = cellSize / 2; // 2:1 ratio
   const N = items.length;
@@ -37,8 +40,7 @@ export function DRADiagram({ items, cells, cellSize = 64, onCellClick, selectedK
     }
   }
 
-  const relColor = (r: Relation) => RELATIONS.find((x) => x.code === r)?.colorVar ?? "currentColor";
-  const relSoft = (r: Relation) => RELATIONS.find((x) => x.code === r)?.softVar ?? "var(--background)";
+
 
   return (
     <div className="overflow-auto rounded-lg border border-border bg-card p-4">
@@ -78,6 +80,7 @@ export function DRADiagram({ items, cells, cellSize = 64, onCellClick, selectedK
               `${cx - W / 2},${cy}`,
             ].join(" ");
             const isSelected = selectedKey === k;
+            const relSoft = (r: string) => RELATIONS.find((x) => x.code === r)?.softVar ?? "var(--background)";
             const fill = cell ? relSoft(cell.rel) : "var(--background)";
             const stroke = isSelected ? "var(--primary)" : "var(--border)";
             return (
@@ -100,7 +103,7 @@ export function DRADiagram({ items, cells, cellSize = 64, onCellClick, selectedK
                     {cell.rel}
                   </text>
                 )}
-                {cell?.reason !== undefined && (
+                {cell?.reason !== undefined && showReasonNumbers && (
                   <text
                     x={cx}
                     y={cy + H * 0.28}
@@ -146,5 +149,119 @@ export function DRALegend() {
         </ul>
       </div>
     </div>
+  );
+}
+
+export function DRAInfoModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  return (
+    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-xl">Diagrama de Relación de Actividades (DRA)</DialogTitle>
+        </DialogHeader>
+        
+        <div className="space-y-6 text-sm">
+          <section>
+            <h3 className="font-semibold mb-2">Concepto</h3>
+            <p className="text-muted-foreground">
+              El Diagrama de Relación de Actividades (DRA) es una herramienta gráfica utilizada en ingeniería industrial y diseño de layouts 
+              para analizar y optimizar la disposición física de áreas, departamentos o equipos dentro de una instalación.
+            </p>
+            <p className="text-muted-foreground mt-2">
+              Su objetivo principal es minimizar los costos de transporte y manejo de materiales, mejorando la eficiencia operativa 
+              mediante la identificación de relaciones de cercanía entre actividades o áreas.
+            </p>
+          </section>
+
+          <section>
+            <h3 className="font-semibold mb-2">Finalidad</h3>
+            <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+              <li>Optimizar la distribución física de instalaciones</li>
+              <li>Reducir distancias de transporte de materiales</li>
+              <li>Minimizar costos operativos</li>
+              <li>Mejorar la seguridad y el flujo de trabajo</li>
+              <li>Facilitar la comunicación entre áreas relacionadas</li>
+              <li>Identificar cuellos de botella en los procesos</li>
+            </ul>
+          </section>
+
+          <section>
+            <h3 className="font-semibold mb-2">Tipos de Relación</h3>
+            <p className="text-muted-foreground mb-3">
+              Los códigos de relación indican el grado de importancia de la cercanía entre dos actividades:
+            </p>
+            <div className="space-y-2">
+              {DEFAULT_RELATIONS.map((r) => (
+                <div key={r.code} className="flex items-start gap-2">
+                  <span className="inline-flex h-6 w-6 items-center justify-center rounded font-bold flex-shrink-0" 
+                        style={{ color: r.colorVar, background: `color-mix(in oklab, ${r.colorVar} 15%, transparent)` }}>
+                    {r.code}
+                  </span>
+                  <div>
+                    <span className="font-medium">{r.code} - {r.label}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-muted-foreground text-xs mt-3">
+              Nota: Pueden agregarse tipos personalizados según las necesidades específicas del proyecto.
+            </p>
+          </section>
+
+          <section>
+            <h3 className="font-semibold mb-2">Motivos de Relación</h3>
+            <p className="text-muted-foreground mb-3">
+              Los motivos de relación (números) indican la razón específica por la cual dos actividades deben estar cerca o separadas.
+              En manufactura, los más comunes son:
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {DEFAULT_REASONS.map((r) => (
+                <div key={r.code} className="flex items-start gap-2">
+                  <span className="font-mono font-semibold text-foreground flex-shrink-0">{r.code}</span>
+                  <span className="text-muted-foreground">{r.label}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-muted-foreground text-xs mt-3">
+              Nota: Pueden agregarse motivos personalizados (hasta 13+ en manufactura estándar).
+            </p>
+          </section>
+
+          <section>
+            <h3 className="font-semibold mb-2">Metodología</h3>
+            <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+              <li>Listar todas las actividades/áreas a distribuir</li>
+              <li>Evaluar la relación entre cada par de actividades usando los códigos A, E, I, O, U, X</li>
+              <li>Asignar el motivo específico (número) para cada relación</li>
+              <li>Construir el diagrama triangular con los símbolos y números</li>
+              <li>Analizar el diagrama para identificar agrupaciones lógicas</li>
+              <li>Desarrollar el layout físico basado en las relaciones identificadas</li>
+            </ol>
+          </section>
+
+          <section>
+            <h3 className="font-semibold mb-2">Interpretación del Diagrama</h3>
+            <p className="text-muted-foreground">
+              En el diagrama triangular:
+            </p>
+            <ul className="list-disc list-inside space-y-1 text-muted-foreground mt-2">
+              <li>Cada celda representa la relación entre dos actividades</li>
+              <li>La letra en la celda indica el <strong>tipo de relación</strong> (A, E, I, O, U, X)</li>
+              <li>El número debajo de la letra indica el <strong>motivo de la relación</strong></li>
+              <li>Las celdas vacías indican que no se ha definido una relación</li>
+              <li>El color de fondo de cada celda corresponde al tipo de relación</li>
+            </ul>
+          </section>
+        </div>
+
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="secondary" onClick={onClose}>
+              Cerrar
+            </Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

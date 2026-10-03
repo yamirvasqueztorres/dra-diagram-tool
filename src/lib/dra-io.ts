@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import type { DRAState } from "./dra";
-import { cellKey } from "./dra";
+import { cellKey, DEFAULT_RELATIONS, DEFAULT_REASONS, RELATIONS, REASONS, resetToDefaultConfig } from "./dra";
 
 function getSvgString(): string | null {
   const svg = document.getElementById("dra-svg") as SVGSVGElement | null;
@@ -75,7 +75,15 @@ export async function exportPDF() {
 }
 
 export function exportJSON(state: DRAState) {
-  downloadBlob(new Blob([JSON.stringify(state, null, 2)], { type: "application/json" }), "dra.json");
+  // Incluir configuración personalizada si existe
+  const exportData = {
+    ...state,
+    customConfig: state.customConfig || {
+      relations: RELATIONS.filter(r => !DEFAULT_RELATIONS.some(dr => dr.code === r.code)),
+      reasons: REASONS.filter(r => !DEFAULT_REASONS.some(dr => dr.code === r.code)),
+    },
+  };
+  downloadBlob(new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" }), "dra.json");
 }
 
 export function exportCSV(state: DRAState) {
@@ -96,7 +104,8 @@ export function exportCSV(state: DRAState) {
       } else if (i < j) {
         const key = cellKey(i, j);
         const cell = state.cells[key];
-        row.push(cell ? cell.rel : '');
+        // Incluir relación y motivo si existe: "A:1"
+        row.push(cell ? (cell.reason !== undefined ? `${cell.rel}:${cell.reason}` : cell.rel) : '');
       } else {
         // Debajo de la diagonal, dejar vacío para evitar duplicados
         row.push('');
@@ -114,12 +123,34 @@ export async function importJSON(file: File): Promise<DRAState> {
   const text = await file.text();
   const data = JSON.parse(text);
   if (!Array.isArray(data.items) || typeof data.cells !== "object") throw new Error("JSON inválido");
+  
+  // Si hay configuración personalizada, aplicarla
+  if (data.customConfig) {
+    resetToDefaultConfig();
+    if (data.customConfig.relations && Array.isArray(data.customConfig.relations)) {
+      data.customConfig.relations.forEach((r: { code: string; label: string; colorVar: string; softVar: string }) => {
+        if (!RELATIONS.some(dr => dr.code === r.code)) {
+          RELATIONS.push(r);
+        }
+      });
+    }
+    if (data.customConfig.reasons && Array.isArray(data.customConfig.reasons)) {
+      data.customConfig.reasons.forEach((r: { code: number; label: string }) => {
+        if (!REASONS.some(dr => dr.code === r.code)) {
+          REASONS.push(r);
+        }
+      });
+      REASONS.sort((a, b) => a.code - b.code);
+    }
+  }
+  
   return data as DRAState;
 }
 
 export async function importCSV(file: File): Promise<DRAState> {
   // CSV format: first column = item name, list of items only (one per row).
-  // OR matrix: first row headers, then NxN with relations (A,E,I,O,U,X) — diagonal & lower ignored.
+  // OR matrix: first row headers, then NxN with relations (A,E,I,O,U,X,XX, etc.) — diagonal & lower ignored.
+  // Also supports relations with reasons: "A:1", "E:2", etc.
   const text = (await file.text()).trim();
   const rows = text.split(/\r?\n/).map(r => r.split(",").map(c => c.trim().replace(/^"(.*)"$/, '$1')));
   if (rows.length === 0) throw new Error("CSV vacío");
@@ -129,8 +160,20 @@ export async function importCSV(file: File): Promise<DRAState> {
     const cells: DRAState["cells"] = {};
     for (let i = 0; i < items.length; i++) {
       for (let j = i + 1; j < items.length; j++) {
-        const v = (rows[i + 1]?.[j + 1] ?? "").toUpperCase();
-        if (["A","E","I","O","U","X"].includes(v)) cells[`${i}-${j}`] = { rel: v as any };
+        const v = (rows[i + 1]?.[j + 1] ?? "").trim().toUpperCase();
+        if (v) {
+          // Parse relation and optional reason: "A:1" or "A"
+          const match = v.match(/^([A-Z]+)(?::(\d+))?$/);
+          if (match) {
+            const rel = match[1];
+            const reason = match[2] ? parseInt(match[2], 10) : undefined;
+            // Validar que el tipo de relación existe (estándar o personalizado)
+            const validRels = [...DEFAULT_RELATIONS.map((r: { code: string }) => r.code), ...RELATIONS.filter(r => !DEFAULT_RELATIONS.some((dr: { code: string }) => dr.code === r.code)).map((r: { code: string }) => r.code)];
+            if (validRels.includes(rel)) {
+              cells[`${i}-${j}`] = { rel, reason };
+            }
+          }
+        }
       }
     }
     return { items, cells };
